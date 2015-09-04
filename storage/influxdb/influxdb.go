@@ -57,6 +57,8 @@ const (
 	colFsLimit = "fs_limit"
 	// Filesystem usage.
 	colFsUsage = "fs_usage"
+    // Labels
+    colLabels = "labels"
 )
 
 func (self *influxdbStorage) getSeriesDefaultValues(
@@ -84,7 +86,8 @@ func (self *influxdbStorage) getSeriesDefaultValues(
 // In order to maintain a fixed column format, we add a new series for each filesystem partition.
 func (self *influxdbStorage) containerFilesystemStatsToSeries(
 	ref info.ContainerReference,
-	stats *info.ContainerStats) (series []*influxdb.Series) {
+	stats *info.ContainerStats,
+) (series []*influxdb.Series) {
 	if len(stats.Filesystem) == 0 {
 		return series
 	}
@@ -139,6 +142,20 @@ func (self *influxdbStorage) containerStatsToValues(
 	return columns, values
 }
 
+func (self *influxdbStorage) customStatsToValues(
+	ref info.ContainerReference,
+    spec info.ContainerSpec,
+	stats *info.ContainerStats,
+) (columns []string, values []interface{}) {
+	self.getSeriesDefaultValues(ref, stats, &columns, &values)
+
+    // Labels
+	columns = append(columns, colLabels)
+	values = append(values, spec.Labels)
+
+    return columns, values
+}
+
 func (self *influxdbStorage) OverrideReadyToFlush(readyToFlush func() bool) {
 	self.readyToFlush = readyToFlush
 }
@@ -158,6 +175,7 @@ func (self *influxdbStorage) AddStats(ref info.ContainerReference, stats *info.C
 		defer self.lock.Unlock()
 
 		self.series = append(self.series, self.newSeries(self.containerStatsToValues(ref, stats)))
+        self.series = append(self.series, self.newSeries(self.customStatsToValues(ref, stats)))
 		self.series = append(self.series, self.containerFilesystemStatsToSeries(ref, stats)...)
 		if self.readyToFlush() {
 			seriesToFlush = self.series
